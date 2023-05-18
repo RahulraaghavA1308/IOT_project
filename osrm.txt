@@ -1,0 +1,43 @@
+import requests
+import json
+import overpy
+
+def get_shortest_path(lat1, lon1, lat2, lon2):
+    # Use OSRM to find the shortest path
+    url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=full&geometries=geojson"
+    response = requests.get(url)
+    try:
+        response.raise_for_status()
+        route = json.loads(response.content)["routes"][0]["geometry"]["coordinates"]
+        print(route)
+        return route
+    except (requests.exceptions.HTTPError, IndexError, KeyError) as e:
+        print(f"Error getting shortest path: {e}")
+        print(response.content)
+        return None
+
+def get_intersections(route):
+    # Use Overpass API to get all intersections with at least 4 lanes along the route
+    api = overpy.Overpass()
+    nodes = api.query(f"""
+        way["highway"~"^(primary|secondary|tertiary|unclassified|residential|service)$"]
+        (around:0.001,{route[0][1]},{route[0][0]});
+        (
+            node["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service)$"]
+            ["lanes"~"^[4-9]|10$"]
+            (around:0.001,{route[0][1]},{route[0][0]});
+            node["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service)$"]
+            ["lanes"~"^[4-9]|10$"]
+            (around:0.001,{route[-1][1]},{route[-1][0]});
+        );
+        out;
+    """).nodes
+    return [(node.lat, node.lon) for node in nodes]
+
+# Example usage
+lat1, lon1 = 37.743428, -122.492942
+lat2, lon2 = 37.750893, -122.487012
+route = get_shortest_path(lat1, lon1, lat2, lon2)
+if route is not None:
+    intersections = get_intersections(route)
+    print(intersections)
